@@ -1,4 +1,5 @@
 setwd("/Users/David/Desktop/multiomics/oren_tz/mouse_als/")
+source("~/Desktop/repos/multiomics/R/aux_functions.R")
 list.files()
 # Files in this dir
 # combined.gene.sf.tpm - gene expression matrix
@@ -10,6 +11,67 @@ list.files()
 # SamplesToMatch_ER.xlsx - omics-specific metadata, need to examine manually
 # tx2gene.csv - ensembl transcript to gene mapping
 
+####################################################################################################
+####################################################################################################
+####################################################################################################
+####################################################################################################
+
+# Helper functions for differential analysis
+select_analyte_pval_fchange<-function(x,p,f){
+  n = length(x)
+  fs = x[1:(n/2)]
+  ps = x[((n/2)+1):n]
+  return(any(abs(fs)>=f & ps <= p))
+}
+get_diff_abundance_raw_results<-function(lm_diff_res,selected_analytes){
+  m = c()
+  for(nn in names(lm_diff_res)){
+    curr_res = lm_diff_res[[nn]][,selected_analytes[[nn]]]
+    curr_res = t(curr_res)
+    curr_res = cbind(curr_res,rep(nn,nrow(curr_res)))
+    m = rbind(m,curr_res)
+  }
+  dim(m)
+  m = cbind(rownames(m),m)
+  colnames(m)[1] = "analyte"
+  return(m)
+}
+# Assumes that many to many mappings is not a big issue
+transform_raw_results_to_gene_based<-function(m,uniprot2ensemble_pro){
+  curr_prot = m[m[,6]=="prot",1]
+  curr_prot2ensembl_prot = uniprot2ensemble_pro[is.element(uniprot2ensemble_pro[,1],set=curr_prot),]
+  curr_prot2ensembl_prot[curr_prot2ensembl_prot[,1]=="P97372",]
+  curr_prot2ensembl_gene = uniprot2ensemble_gene[is.element(uniprot2ensemble_gene[,1],set=curr_prot),]
+  curr_prot2ensembl_gene = curr_prot2ensembl_gene[is.element(curr_prot2ensembl_gene[,3],set=rownames(abundance_data[["ge"]])),]
+  rough_intersection_pval = phyper(31,500,3000,116,lower.tail = F)
+  all_our_genes = union(m[m[,6]=="ge",1],curr_prot2ensembl_gene[,3])
+  new_m = c()
+  count = 0
+  for(g in all_our_genes){
+    v1 = rep(NA,nrow(lm_diff_res[["ge"]]))
+    if(is.element(g,set=colnames(lm_diff_res[["ge"]]))){
+      v1 = lm_diff_res[["ge"]][,g] 
+    }
+    curr_prot = all_prot2ensembl_gene[all_prot2ensembl_gene[,3]==g,1]
+    count = count + length(curr_prot)
+    v2 = rep(NA,nrow(lm_diff_res[["ge"]]))
+    if(length(curr_prot)>0){
+      v2 = lm_diff_res[["prot"]][,curr_prot[1]] 
+    }
+    new_m = rbind(new_m,c(v1,v2,curr_prot[1]))
+    rownames(new_m)[nrow(new_m)] = g
+  }
+  new_m = cbind(rownames(new_m),new_m)
+  colnames(new_m)[1] = "analyte"
+  return(list(new_m,rough_intersection_pval))
+}
+
+####################################################################################################
+####################################################################################################
+####################################################################################################
+####################################################################################################
+
+# Process the dataset
 abundance_data = list()
 abundance_data[["ge"]] = read.table("combined.gene.sf.tpm",header = T,row.names = 1,stringsAsFactors = F)
 abundance_data[["metab"]] = read.csv("Metabolomics.csv",header = T,row.names = 1,stringsAsFactors = F)
@@ -63,106 +125,6 @@ table(to_rem)
 ####################################################################################################
 ####################################################################################################
 ####################################################################################################
-# Helper functions
-select_analyte_pval_fchange<-function(x,p,f){
-  n = length(x)
-  fs = x[1:(n/2)]
-  ps = x[((n/2)+1):n]
-  return(any(abs(fs)>=f & ps <= p))
-}
-get_diff_abundance_raw_results<-function(lm_diff_res,selected_analytes){
-  m = c()
-  for(nn in names(lm_diff_res)){
-    curr_res = lm_diff_res[[nn]][,selected_analytes[[nn]]]
-    curr_res = t(curr_res)
-    curr_res = cbind(curr_res,rep(nn,nrow(curr_res)))
-    m = rbind(m,curr_res)
-  }
-  dim(m)
-  m = cbind(rownames(m),m)
-  colnames(m)[1] = "analyte"
-  return(m)
-}
-# Assumes that many to many mappings is not a big issue
-transform_raw_results_to_gene_based<-function(m,uniprot2ensemble_pro){
-  curr_prot = m[m[,6]=="prot",1]
-  curr_prot2ensembl_prot = uniprot2ensemble_pro[is.element(uniprot2ensemble_pro[,1],set=curr_prot),]
-  curr_prot2ensembl_prot[curr_prot2ensembl_prot[,1]=="P97372",]
-  curr_prot2ensembl_gene = uniprot2ensemble_gene[is.element(uniprot2ensemble_gene[,1],set=curr_prot),]
-  curr_prot2ensembl_gene = curr_prot2ensembl_gene[is.element(curr_prot2ensembl_gene[,3],set=rownames(abundance_data[["ge"]])),]
-  # curr_prot2ensembl_gene[curr_prot2ensembl_gene[,1]=="Q80WG5",]
-  # lm_diff_res[["ge"]][,"ENSMUSG00000007476"]
-  rough_intersection_pval = phyper(31,500,3000,116,lower.tail = F)
-  all_our_genes = union(m[m[,6]=="ge",1],curr_prot2ensembl_gene[,3])
-  new_m = c()
-  count = 0
-  for(g in all_our_genes){
-    v1 = rep(NA,nrow(lm_diff_res[["ge"]]))
-    if(is.element(g,set=colnames(lm_diff_res[["ge"]]))){
-      v1 = lm_diff_res[["ge"]][,g] 
-    }
-    curr_prot = all_prot2ensembl_gene[all_prot2ensembl_gene[,3]==g,1]
-    count = count + length(curr_prot)
-    v2 = rep(NA,nrow(lm_diff_res[["ge"]]))
-    if(length(curr_prot)>0){
-      v2 = lm_diff_res[["prot"]][,curr_prot[1]] 
-    }
-    new_m = rbind(new_m,c(v1,v2,curr_prot[1]))
-    rownames(new_m)[nrow(new_m)] = g
-  }
-  new_m = cbind(rownames(new_m),new_m)
-  colnames(new_m)[1] = "analyte"
-  return(list(new_m,rough_intersection_pval))
-}
-# Read protein mapping info: we want uniprot to ensembl
-# Downloaded from uniprot
-raw_proteomics = read.delim("MOUSE_10090_idmapping.dat",header = F,stringsAsFactors = F)
-uniprot2ensemble_pro = raw_proteomics[raw_proteomics[,2] == "Ensembl_PRO",]
-uniprot2ensemble_gene = raw_proteomics[raw_proteomics[,2] == "Ensembl",]
-all_prot2ensembl_gene = uniprot2ensemble_gene[is.element(uniprot2ensemble_gene[,1],
-                                                         set=rownames(abundance_data[["prot"]])),]
-# clustering, enrichment, and intepretation of results
-library('gskb')
-data(mm_pathway)
-gene_info = read.table("Mus_musculus.GRCm38.94.gtf_genes_only.txt",stringsAsFactors = F)
-gene_names = gene_info[,16]
-names(gene_names) = gene_info[,10]
-gene_names[1:10]
-is.element("Apoe",set=gene_names)
-gene_names = toupper(gene_names)
-bg = gene_names[rownames(abundance_data[["ge"]])]
-simple_enrichment_analysis<-function(set1,set2,bg){
-  set1 = intersect(set1,bg)
-  set2 = intersect(set2,bg)
-  if(length(set1)==0 || length(set2)==0){return(1)}
-  x1 = is.element(bg,set=set1)
-  x2 = is.element(bg,set=set2)
-  tb = table(x1,x2)
-  p = fisher.test(tb,alternative = "g")$p.value
-  genes = intersect(set1,set2)
-  return(list(p=p,genes=genes))
-}
-enrichment_list_to_table<-function(l){
-  pvsl = sapply(l,function(x)x[[1]])
-  genes = sapply(l,function(x)paste(x[[2]],collapse=","))
-  return(cbind(names(l),pvsl,genes))
-}
-
-# Differential abundance using simple linear regression
-lm_get_effects_and_pvals<-function(y,x){
-  m = lm(y~.,data=data.frame(y,x))
-  m = summary(m)$coefficients
-  v = c(m[-1,1],m[-1,4])
-  names(v)[1:(nrow(m)-1)] = paste("effect_",names(v)[1:(nrow(m)-1)],sep="")
-  names(v)[nrow(m):length(v)] = paste("pval_", names(v)[nrow(m):length(v)],sep="")
-  return(v)
-}
-
-####################################################################################################
-####################################################################################################
-####################################################################################################
-####################################################################################################
-
 
 lm_diff_res = list()
 # metabolomics
@@ -235,9 +197,9 @@ abline(m[[1]][1],m[[1]][2],lwd=2,lty=2)
 sapply(lm_diff_res,dim)
 ps = sapply(lm_diff_res,function(x)c(x[3:4,]))
 ps_v = unlist(ps)
-table(p.adjust(ps_v,method="fdr")<0.01)
+table(p.adjust(ps_v,method="fdr")<0.1)
 qs_v = p.adjust(ps_v,method="fdr")
-pval_thr = max(ps_v[qs_v < 0.05]) 
+pval_thr = max(ps_v[qs_v < 0.1]) 
 
 # Analysis for a specific fchange analysis
 selected_analytes = lapply(lm_diff_res,function(x,...)
@@ -247,7 +209,22 @@ sapply(selected_analytes,table)
 m = get_diff_abundance_raw_results(lm_diff_res,selected_analytes)
 write.table(m,file="analyte_diff_analysis_results.txt",sep="\t",quote = T,col.names = T,row.names = F)
 new_m = transform_raw_results_to_gene_based(m,uniprot2ensemble_pro)
-write.table(new_m[[1]],file="analyte_diff_analysis_results_by_gene.txt",sep="\t",quote = T,col.names = T,row.names = F)
+new_m = new_m[[1]]
+colnames(new_m) = c("gene","transcript:effect_geno","transcript:effect_ctrl","transcript:pval_geno","transcript:pval_ctrl",
+                    "protein:effect_geno","protein:effect_ctrl","protein:pval_geno","protein:pval_ctrl","prot_id(if_relevant)")
+write.table(new_m,file="analyte_diff_analysis_results_by_gene.txt",sep="\t",quote = T,col.names = T,row.names = F)
+
+# Another way to represent the results: one big matrix
+summ_mat = c()
+for(j in 1:length(selected_analytes)){
+  curr_analytes = selected_analytes[[j]]
+  curr_regs = lm_diff_res[[j]][1:2,curr_analytes]
+  curr_type = rep(names(selected_analytes)[j],sum(curr_analytes))
+  curr_regs = rbind(curr_type,curr_regs)
+  summ_mat = rbind(summ_mat,t(curr_regs))
+}
+plot(as.numeric(summ_mat[,2]),as.numeric(summ_mat[,3]),xlim = c(-4,4),ylim=c(-4,4))
+write.table(summ_mat,file="analyte_diff_analysis_results.txt",sep="\t",quote = T,col.names = T,row.names = T)
 
 # Check proteomics-transcriptomics agreement
 new_m = new_m[[1]]
@@ -276,17 +253,31 @@ abline(m[[1]][1],m[[1]][2],lwd=2,lty=2)
 new_m_effects = new_m[,c(2:3)]
 mode(new_m_effects) = "numeric"
 
-kmeans_sol = kmeans(new_m_effects,centers = 2)
+wss <- sapply(1:10,
+              function(k){kmeans(new_m_effects, k, nstart=50,iter.max = 15 )$tot.withinss})
+plot(1:length(wss), wss,
+     type="b", pch = 19, frame = FALSE,
+     xlab="Number of clusters K",
+     ylab="Total within-clusters sum of squares")
+
+
+kmeans_sol = kmeans(new_m_effects,centers = 4)
 table(kmeans_sol$cluster)
-boxplot(new_m_effects[,1]~kmeans_sol$cluster)
-boxplot(new_m_effects[,2]~kmeans_sol$cluster)
+par(mfrow=c(1,2))
+boxplot(new_m_effects[,1]~kmeans_sol$cluster,col="red",main = "Cluster by effects on genotype",xlab="Cluster",ylab="Fold change")
+boxplot(new_m_effects[,2]~kmeans_sol$cluster,col="blue",main = "Cluster by effects of treatment",xlab="Cluster",ylab="Fold change")
 
-set1 = gene_names[rownames(new_m)[kmeans_sol$cluster==2]]
-enrichment_res = sapply(mm_pathway,simple_enrichment_analysis,set2=set1,bg=bg)
-enrichment_pvals = sapply(enrichment_res,function(x)x[1])
-# write.table(enrichment_list_to_table(enrichment_res[(p.adjust(unlist(enrichment_pvals),method="fdr")<0.1)]),
-#             file = "simple_enrichment_results.txt",sep="\t",row.names = F)
-enrichment_list_to_table(enrichment_res[(p.adjust(unlist(enrichment_pvals),method="fdr")<0.05)])
-
-
-
+enrichment_results = c()
+for(cc in unique(kmeans_sol$cluster)){
+  set1 = gene_names[rownames(new_m)[kmeans_sol$cluster==cc]]
+  enrichment_res = sapply(mm_pathway,simple_enrichment_analysis,set2=set1,bg=bg)  
+  tb = enrichment_list_to_table(enrichment_res)
+  curr_cl = paste("cluster",cc,sep="")
+  tb = cbind(rep(curr_cl,nrow(tb)),tb)
+  enrichment_results = rbind(enrichment_results,tb)
+}
+all_ps = as.numeric(enrichment_results[,3])
+hist(all_ps)
+all_qs = p.adjust(all_ps,method='fdr')
+table(all_qs < 0.1)
+write.table(enrichment_results[all_qs < 0.1,],sep="\t",quote=F)

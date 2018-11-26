@@ -68,7 +68,9 @@ rnaseq_cp_bios = read.table("rnaseq_cp_biospec_metadata.txt",sep="\t",header=T)
 rnaseq_cp_bios = rnaseq_cp_bios[order(rnaseq_cp_bios[,1]),]
 # match to the column names in our dataset, look at colnames(datasets[[3]][[1]])
 rnaseq_cp_bios = rnaseq_cp_bios[!grepl("anti", rnaseq_cp_bios[,1]),]
+rnaseq_cp_bios = rnaseq_cp_bios[c(1:3,5:10),]
 xx = datasets[["rnaseq;CP"]][[1]] # manual check: the colnames of xx fit the metadata above
+colnames(xx)
 
 library(lme4)
 simple_diff_analysis<-function(x,y,ctrl=FALSE,func=t.test,...){
@@ -110,6 +112,21 @@ simple_diff_analysis_rand_effects<-function(x,y,g1=NULL,g2=NULL,...){
   return(m$coefficients[2,c(1,4)])
 }
 
+simple_lm_analysis<-function(x,y,g1=NULL,g2=NULL,...){
+  d = data.frame(x,y)
+  if(is.null(g2) && !is.null(g2)){
+  	d = data.frame(x,y,g1)
+  } 
+  if(is.null(g1)&&!is.null(g1)){
+  	d = data.frame(x,y,g2)
+  }
+  if(!is.null(g2) & !is.null(g1)){
+  	d = data.frame(x,y,g1,g2)
+  }
+  m = summary(lm(x~.,data=d))
+  return(m$coefficients[2,c(1,4)])
+}
+
 
 diff_res = list()
 # Non-rnaseq: use simple t-tests
@@ -127,11 +144,34 @@ for(nn in names(datasets)[3:4]){
   if(grepl("colon",nn,ignore.case=T)){curr_m = rnaseq_colon_bios}
   g1 = curr_m$Batch
   g2 = curr_m[,ncol(curr_m)]
-  res1 = t(apply(curr_x,1, simple_diff_analysis_rand_effects,y=curr_y,g1=g1))
-  res2 = t(apply(curr_x,1, simple_diff_analysis_rand_effects,y=curr_y,g2=g2))
-  res3 = t(apply(curr_x,1, simple_diff_analysis_rand_effects,y=curr_y,g1=g1,g2=g2))
-  diff_res[[nn]] = res
+  #res1 = t(apply(curr_x,1, simple_diff_analysis_rand_effects,y=curr_y,g1=g1))
+  #res2 = t(apply(curr_x,1, simple_diff_analysis_rand_effects,y=curr_y,g2=g2))
+  #res3 = t(apply(curr_x,1, simple_diff_analysis_rand_effects,y=curr_y,g1=g1,g2=g2))
+  res4 = t(apply(curr_x,1,simple_diff_analysis,y=curr_y))
+  res5 = t(apply(curr_x,1, simple_lm_analysis,y=curr_y,g1=g1,g2=g2))
+  #diff_res[[paste(nn,"re",sep="")]] = res1
+  #diff_res[[paste(nn,"fe",sep="")]] = res2
+  #diff_res[[paste(nn,"re,fe",sep="")]] = res3
+  diff_res[[paste(nn,"naive",sep="")]] = res4
+  diff_res[[paste(nn,"batch_conc_corrected",sep="")]] = res5
 }
+
+# For QA and testing
+gene = "ENSMUSG00000000159.15"
+res5[gene,]
+res4[gene,]
+x = datasets[[3]][[1]][gene,]
+y = datasets[[3]][[2]]
+g1 = rnaseq_colon_bios$Batch
+g2 = rnaseq_colon_bios[,4]
+d = data.frame(x,y,g1,g2)
+summary(lm(x~.,data=d))
+par(mfrow=c(1,3))
+hist(res4[,2]);hist(res5[,2])
+qqplot(res4[,2],res5[,2]);abline(0,1,lwd=2,lty=2)
+cor(res4[,2],res5[,2],method="spearman")
+cor(res4[,1],res5[,1])
+table(res4[,2]<1e-4,res5[,2]<1e-4)
 
 par(mfrow=c(2,2))
 for(nn in names(datasets)){

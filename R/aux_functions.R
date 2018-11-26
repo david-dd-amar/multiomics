@@ -16,7 +16,10 @@ gene_info = read.table(mouse_genes_path,stringsAsFactors = F)
 gene_names = gene_info[,16]
 names(gene_names) = gene_info[,10]
 gene_names = toupper(gene_names)
-# bg = gene_names[rownames(abundance_data[["ge"]])]
+# An important parameter of enrichment analyses: the background set of genes.
+# This should be all genes theoretically examined in an experiment.
+# Example for us:
+# bg = gene_names[rownames(abundance_data[["ge"]])] 
 simple_enrichment_analysis<-function(set1,set2,bg){
   set1 = intersect(set1,bg)
   set2 = intersect(set2,bg)
@@ -51,3 +54,15 @@ lm_get_effects_and_pvals<-function(y,x){
   names(v)[nrow(m):length(v)] = paste("pval_", names(v)[nrow(m):length(v)],sep="")
   return(v)
 }
+
+# Example code for determining the number of clusters in a matrix
+# We run kmeans on our data matrix new_m_effects, changing the number of clusters from 1 to 10
+# wss <- sapply(1:10,
+#              function(k){kmeans(new_m_effects, k, nstart=50,iter.max = 15 )$tot.withinss})
+# We now plot the within cluster sum of squares (called WSS or WCSS) - this should decrease as a function of the number
+# of clusters. The number of clusters is selected by the "elbow" rule: take the point from which the 
+# decrease in the WCSS seems negligible
+# plot(1:length(wss), wss,
+#     type="b", pch = 19, frame = FALSE,
+#     xlab="Number of clusters K",
+#     ylab="Total within-clusters sum of squares")

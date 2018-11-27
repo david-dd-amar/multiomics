@@ -7,8 +7,7 @@ mouse_proteins_path = "/Users/David/Desktop/multiomics/oren_tz/mouse_als/MOUSE_1
 raw_proteomics = read.delim(mouse_proteins_path,header = F,stringsAsFactors = F)
 uniprot2ensemble_pro = raw_proteomics[raw_proteomics[,2] == "Ensembl_PRO",]
 uniprot2ensemble_gene = raw_proteomics[raw_proteomics[,2] == "Ensembl",]
-all_prot2ensembl_gene = uniprot2ensemble_gene[is.element(uniprot2ensemble_gene[,1],
-                                                         set=rownames(abundance_data[["prot"]])),]
+
 # for clustering, enrichment, and intepretation of results
 library('gskb')
 data(mm_pathway)

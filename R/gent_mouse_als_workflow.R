@@ -121,6 +121,11 @@ abundance_data[["ge"]] = abundance_data[["ge"]][!to_rem,]
 to_rem = apply(abundance_data[["prot"]][,11:19],1,exclude_analyte_by_thrs,intensity_thr = 24)
 table(to_rem)
 
+# Define analyte sets for enrichment analyses
+all_prot2ensembl_gene = uniprot2ensemble_gene[is.element(uniprot2ensemble_gene[,1],
+                                                         set=rownames(abundance_data[["prot"]])),]
+bg = gene_names[rownames(abundance_data[["ge"]])] 
+
 ####################################################################################################
 ####################################################################################################
 ####################################################################################################

@@ -48,7 +48,9 @@ for(nn in names(datasets)){
 }
 
 par(mfrow=c(2,2))
-sapply(datasets,function(x)boxplot(x[[1]],names = NA))
+for(nn in names(datasets)){
+	boxplot(datasets[[nn]][[1]],main=nn,ylab="Log abundance",xlab="Samples",names=F)
+}
 sapply(datasets,function(x)table(x[[1]]==0))
 sapply(datasets,function(x)nrow(x[[1]]==0))
 sapply(datasets,function(x)x[[2]])
@@ -128,6 +130,32 @@ simple_lm_analysis<-function(x,y,g1=NULL,g2=NULL,...){
 }
 
 
+diff_res_ttest = list()
+for(nn in names(datasets)){
+  curr_x = datasets[[nn]][[1]]
+  curr_y = datasets[[nn]][[2]]
+  res = t(apply(curr_x,1,simple_diff_analysis,y=curr_y))
+  diff_res_ttest[[nn]] = res
+}
+diff_res_wilcox = list()
+for(nn in names(datasets)){
+  curr_x = datasets[[nn]][[1]]
+  curr_y = datasets[[nn]][[2]]
+  res = t(apply(curr_x,1,simple_diff_analysis,y=curr_y,func=wilcox.test))
+  diff_res_wilcox[[nn]] = res
+}
+
+l = diff_res_wilcox
+par(mfrow=c(2,2))
+for(nn in names(l)){
+	hist(l[[nn]][,2],main=nn,xlab="P-value",xlim=c(0,1))
+}
+par(mfrow=c(2,2))
+for(nn in names(l)){
+	qqplot(y=-log(l[[nn]][,2],10),x=-log(runif(10000),10),main=nn,ylab="Sample quantiles",xlab="Theoretical quantiles")
+	abline(0,1,lty=2,lwd=2,col="red")
+}
+
 diff_res = list()
 # Non-rnaseq: use simple t-tests
 for(nn in names(datasets)[1:2]){
@@ -152,9 +180,33 @@ for(nn in names(datasets)[3:4]){
   #diff_res[[paste(nn,"re",sep="")]] = res1
   #diff_res[[paste(nn,"fe",sep="")]] = res2
   #diff_res[[paste(nn,"re,fe",sep="")]] = res3
-  diff_res[[paste(nn,"naive",sep="")]] = res4
-  diff_res[[paste(nn,"batch_conc_corrected",sep="")]] = res5
+  diff_res[[paste(nn,"_naive",sep="")]] = res4
+  diff_res[[paste(nn,"_batch_conc_corrected",sep="")]] = res5
 }
+
+
+l = diff_res[3:6]
+par(mfrow=c(2,2))
+for(nn in names(l)){
+	hist(l[[nn]][,2],main=nn,xlab="P-value",xlim=c(0,1))
+}
+par(mfrow=c(2,2))
+for(nn in names(l)){
+	qqplot(y=-log(l[[nn]][,2],10),x=-log(runif(10000),10),main=nn,ylab="Sample quantiles",xlab="Theoretical quantiles")
+	abline(0,1,lty=2,lwd=2,col="red")
+}
+
+# Adjust and select genes
+l = diff_res[c(4,6)]
+all_ps = unlist(c(sapply(l,function(x)x[,2])))
+thr = max(all_ps[p.adjust(all_ps,method="fdr") < 0.1])
+sapply(l,function(x,y)sum(x[,2]<y),y=thr)
+selected_results_adjusted = sapply(l,function(x,y)x[x[,2]<y,],y=thr)
+l = diff_res[c(3,5)]
+all_ps = unlist(c(sapply(l,function(x)x[,2])))
+thr = max(all_ps[p.adjust(all_ps,method="fdr") < 0.1])
+sapply(l,function(x,y)sum(x[,2]<y),y=thr)
+selected_results_naive = sapply(l,function(x,y)x[x[,2]<y,],y=thr)
 
 # For QA and testing
 gene = "ENSMUSG00000000159.15"
@@ -173,34 +225,31 @@ cor(res4[,2],res5[,2],method="spearman")
 cor(res4[,1],res5[,1])
 table(res4[,2]<1e-4,res5[,2]<1e-4)
 
-par(mfrow=c(2,2))
-for(nn in names(datasets)){
-  hist(diff_res[[nn]][,2],main=nn,xlab = "t-test p-value",xlim=c(0,1))
+# Enrichment analysis
+all_selected_results = c(selected_results_naive,selected_results_adjusted)
+bg = union(rownames(datasets[[3]][[1]]),rownames(datasets[[4]][[1]]))
+bg = sapply(bg,function(x)strsplit(x,split="\\.")[[1]][1])
+bg = gene_names[bg]
+bg = bg[!is.na(bg)]
+enrichment_results = c()
+for(cc in names(all_selected_results)){
+  set1 = rownames(all_selected_results[[cc]])
+  set1 = sapply(set1,function(x)strsplit(x,split="\\.")[[1]][1])
+  set1 = gene_names[set1]
+  set1 = set1[!is.na(set1)]
+  enrichment_res = sapply(mm_pathway,simple_enrichment_analysis,set2=set1,bg=bg)  
+  tb = enrichment_list_to_table(enrichment_res)
+  curr_cl = cc
+  tb = cbind(rep(curr_cl,nrow(tb)),tb)
+  enrichment_results = rbind(enrichment_results,tb)
 }
-dev.off()
-par(mfrow=c(2,2))
-for(nn in names(datasets)){
-  v1 = -log(diff_res[[nn]][,2])
-  v2 = -log(runif(10000))
-  qqplot(x=v2,y=v1)
-  abline(0,1,lwd=2,lty=2)
-}
-dev.off()
-
-# compare tissues
-x1 = diff_res[[3]][,1]
-x2 = diff_res[[4]][,1]
-inds = intersect(names(x1),names(x2))
-x1 = x1[inds];x2=x2[inds]
-plot(x1,x2)
-
-all_pvals = unlist(c(sapply(diff_res,function(x)x[,2])))
-hist(all_pvals)
-all_qvals = p.adjust(all_pvals,method="BY")
-thr = max(all_pvals[all_qvals < 0.1])
-passed_results = lapply(diff_res,function(x,y)x[x[,2]<=y,],y=thr)
-sapply(passed_results,dim)
-
-
-
+# compare enrichment results before and after adjustment
+m = enrichment_results[grepl("naive", enrichment_results[,1]),]
+all_ps = as.numeric(m[,3])
+all_qs = p.adjust(all_ps,method='fdr')
+naive_analysis_results = m[all_qs < 0.1,]
+m = enrichment_results[!grepl("naive", enrichment_results[,1]),]
+all_ps = as.numeric(m[,3])
+all_qs = p.adjust(all_ps,method='fdr')
+adj_analysis_results = m[all_qs < 0.2,]
 

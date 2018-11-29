@@ -84,36 +84,40 @@ simple_diff_analysis<-function(x,y,ctrl=FALSE,func=t.test,...){
   return(c(mean_diff=mean_diff,pval=pval))
 }
 
-# g1 = a factor for random effects
-# g2 = a covariate to add
-simple_diff_analysis_rand_effects<-function(x,y,g1=NULL,g2=NULL,...){
-	m0 = NULL
-  if(is.null(g2)){
-  	g1 = as.factor(g1)
-  	d = data.frame(x,y,g1)
-  	m = lmer(x~y + (1|g1),data=d,REML=F)
-  	m0 = lmer(x~ (1|g1),data=d, REML =F) 
-  } 
-  if(is.null(g1)){
-  	d = data.frame(x,y,g2)
-  	m = lm(x~y + g2,data=d)
-  }
-  if(!is.null(g2) & !is.null(g1)){
-  	g1 = as.factor(g1)
-  	d = data.frame(x,y,g1,g2)
-  	m = lmer(x~y + g2 + (1|g1),data=d, REML =F)
-  	m0 = lmer(x~ g2 + (1|g1),data=d, REML =F)
-  }
-  if(!is.null(m0)){
-  	an = anova(m,m0)
-  	pval = an[2,8]
-  	fc = summary(m)$coefficients[2,1]
-  	return(c(fc,pval))
-  }
-  m = summary(m)
-  return(m$coefficients[2,c(1,4)])
-}
+# # Deprecated for now. We used fixed-effects analysis to adjust for covariates
+# # g1 = a factor for random effects
+# # g2 = a covariate to add
+# simple_diff_analysis_rand_effects<-function(x,y,g1=NULL,g2=NULL,...){
+# 	m0 = NULL
+#   if(is.null(g2)){
+#   	g1 = as.factor(g1)
+#   	d = data.frame(x,y,g1)
+#   	m = lmer(x~y + (1|g1),data=d,REML=F)
+#   	m0 = lmer(x~ (1|g1),data=d, REML =F) 
+#   } 
+#   if(is.null(g1)){
+#   	d = data.frame(x,y,g2)
+#   	m = lm(x~y + g2,data=d)
+#   }
+#   if(!is.null(g2) & !is.null(g1)){
+#   	g1 = as.factor(g1)
+#   	d = data.frame(x,y,g1,g2)
+#   	m = lmer(x~y + g2 + (1|g1),data=d, REML =F)
+#   	m0 = lmer(x~ g2 + (1|g1),data=d, REML =F)
+#   }
+#   if(!is.null(m0)){
+#   	an = anova(m,m0)
+#   	pval = an[2,8]
+#   	fc = summary(m)$coefficients[2,1]
+#   	return(c(fc,pval))
+#   }
+#   m = summary(m)
+#   return(m$coefficients[2,c(1,4)])
+# }
 
+# A simple function that adjusts for having one or two covariates.
+# Current implementation is fine but not generalizable for more covariates,
+# which will be implemented later if necessary.
 simple_lm_analysis<-function(x,y,g1=NULL,g2=NULL,...){
   d = data.frame(x,y)
   if(is.null(g2) && !is.null(g2)){
@@ -129,7 +133,7 @@ simple_lm_analysis<-function(x,y,g1=NULL,g2=NULL,...){
   return(m$coefficients[2,c(1,4)])
 }
 
-
+# Simple pairwise tests
 diff_res_ttest = list()
 for(nn in names(datasets)){
   curr_x = datasets[[nn]][[1]]
@@ -144,7 +148,8 @@ for(nn in names(datasets)){
   res = t(apply(curr_x,1,simple_diff_analysis,y=curr_y,func=wilcox.test))
   diff_res_wilcox[[nn]] = res
 }
-
+# Plot the results above. These are baseline for comparisons against
+# more "advanced" analyses (such as those that adjust for batch)
 l = diff_res_wilcox
 par(mfrow=c(2,2))
 for(nn in names(l)){
@@ -155,7 +160,9 @@ for(nn in names(l)){
 	qqplot(y=-log(l[[nn]][,2],10),x=-log(runif(10000),10),main=nn,ylab="Sample quantiles",xlab="Theoretical quantiles")
 	abline(0,1,lty=2,lwd=2,col="red")
 }
-
+# Here we perform the main analysis: a naive t-test vs.
+# regression-based adjustment for technical variables such as
+# batch and concentration
 diff_res = list()
 # Non-rnaseq: use simple t-tests
 for(nn in names(datasets)[1:2]){
@@ -172,19 +179,13 @@ for(nn in names(datasets)[3:4]){
   if(grepl("colon",nn,ignore.case=T)){curr_m = rnaseq_colon_bios}
   g1 = curr_m$Batch
   g2 = curr_m[,ncol(curr_m)]
-  #res1 = t(apply(curr_x,1, simple_diff_analysis_rand_effects,y=curr_y,g1=g1))
-  #res2 = t(apply(curr_x,1, simple_diff_analysis_rand_effects,y=curr_y,g2=g2))
-  #res3 = t(apply(curr_x,1, simple_diff_analysis_rand_effects,y=curr_y,g1=g1,g2=g2))
-  res4 = t(apply(curr_x,1,simple_diff_analysis,y=curr_y))
-  res5 = t(apply(curr_x,1, simple_lm_analysis,y=curr_y,g1=g1,g2=g2))
-  #diff_res[[paste(nn,"re",sep="")]] = res1
-  #diff_res[[paste(nn,"fe",sep="")]] = res2
-  #diff_res[[paste(nn,"re,fe",sep="")]] = res3
-  diff_res[[paste(nn,"_naive",sep="")]] = res4
-  diff_res[[paste(nn,"_batch_conc_corrected",sep="")]] = res5
+  res1 = t(apply(curr_x,1,simple_diff_analysis,y=curr_y))
+  res2 = t(apply(curr_x,1, simple_lm_analysis,y=curr_y,g1=g1,g2=g2))
+  diff_res[[paste(nn,"_naive",sep="")]] = res1
+  diff_res[[paste(nn,"_batch_conc_corrected",sep="")]] = res2
 }
 
-
+# Plot the results side by side: useful to show if the adjustment worked
 l = diff_res[3:6]
 par(mfrow=c(2,2))
 for(nn in names(l)){
@@ -196,34 +197,36 @@ for(nn in names(l)){
 	abline(0,1,lty=2,lwd=2,col="red")
 }
 
-# Adjust and select genes
+# Adjust and select genes based on FDR
+FDR_threshold = 0.1
 l = diff_res[c(4,6)]
 all_ps = unlist(c(sapply(l,function(x)x[,2])))
-thr = max(all_ps[p.adjust(all_ps,method="fdr") < 0.1])
+thr = max(all_ps[p.adjust(all_ps,method="fdr") < FDR_threshold])
 sapply(l,function(x,y)sum(x[,2]<y),y=thr)
 selected_results_adjusted = sapply(l,function(x,y)x[x[,2]<y,],y=thr)
 l = diff_res[c(3,5)]
 all_ps = unlist(c(sapply(l,function(x)x[,2])))
-thr = max(all_ps[p.adjust(all_ps,method="fdr") < 0.1])
+thr = max(all_ps[p.adjust(all_ps,method="fdr") < FDR_threshold])
 sapply(l,function(x,y)sum(x[,2]<y),y=thr)
 selected_results_naive = sapply(l,function(x,y)x[x[,2]<y,],y=thr)
+save(selected_results_adjusted,selected_results_adjusted,file="selected_results.RData")
 
-# For QA and testing
-gene = "ENSMUSG00000000159.15"
-res5[gene,]
-res4[gene,]
-x = datasets[[3]][[1]][gene,]
-y = datasets[[3]][[2]]
-g1 = rnaseq_colon_bios$Batch
-g2 = rnaseq_colon_bios[,4]
-d = data.frame(x,y,g1,g2)
-summary(lm(x~.,data=d))
-par(mfrow=c(1,3))
-hist(res4[,2]);hist(res5[,2])
-qqplot(res4[,2],res5[,2]);abline(0,1,lwd=2,lty=2)
-cor(res4[,2],res5[,2],method="spearman")
-cor(res4[,1],res5[,1])
-table(res4[,2]<1e-4,res5[,2]<1e-4)
+# # For QA and testing
+# gene = "ENSMUSG00000000159.15"
+# res5[gene,]
+# res4[gene,]
+# x = datasets[[3]][[1]][gene,]
+# y = datasets[[3]][[2]]
+# g1 = rnaseq_colon_bios$Batch
+# g2 = rnaseq_colon_bios[,4]
+# d = data.frame(x,y,g1,g2)
+# summary(lm(x~.,data=d))
+# par(mfrow=c(1,3))
+# hist(res4[,2]);hist(res5[,2])
+# qqplot(res4[,2],res5[,2]);abline(0,1,lwd=2,lty=2)
+# cor(res4[,2],res5[,2],method="spearman")
+# cor(res4[,1],res5[,1])
+# table(res4[,2]<1e-4,res5[,2]<1e-4)
 
 # Enrichment analysis
 all_selected_results = c(selected_results_naive,selected_results_adjusted)
@@ -236,6 +239,12 @@ for(cc in names(all_selected_results)){
   set1 = rownames(all_selected_results[[cc]])
   set1 = sapply(set1,function(x)strsplit(x,split="\\.")[[1]][1])
   set1 = gene_names[set1]
+  if(is.element(cc,set=names(selected_results_naive))){
+    selected_results_naive[[cc]] = list(scores=selected_results_naive[[cc]],gene_names=set1)
+  }
+  if(is.element(cc,set=names(selected_results_adjusted))){
+    selected_results_adjusted[[cc]] = list(scores=selected_results_adjusted[[cc]],gene_names=set1)
+  }
   set1 = set1[!is.na(set1)]
   enrichment_res = sapply(mm_pathway,simple_enrichment_analysis,set2=set1,bg=bg)  
   tb = enrichment_list_to_table(enrichment_res)
@@ -253,3 +262,4 @@ all_ps = as.numeric(m[,3])
 all_qs = p.adjust(all_ps,method='fdr')
 adj_analysis_results = m[all_qs < 0.2,]
 
+save(selected_results_adjusted,selected_results_naive,enrichment_results,file="selected_results.RData")

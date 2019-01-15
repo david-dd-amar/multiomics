@@ -54,6 +54,26 @@ lm_get_effects_and_pvals<-function(y,x){
   return(v)
 }
 
+library(fgsea)
+fgsea_wrapper <- function(pathways,scores,nperm=2000,run_nperm=1000,...){
+  num_runs = nperm/run_nperm
+  l = list()
+  for(j in 1:num_runs){
+    l[[j]] = fgsea(pathways,scores,nperm = run_nperm)
+  }
+  emp_pvals = sapply(l,function(x)x$pval)
+  emp_pvals = emp_pvals*run_nperm
+  min_to_add = min(emp_pvals)
+  emp_pvals = emp_pvals-min_to_add
+  new_pvals = rowSums(emp_pvals)+min_to_add
+  new_pvals = new_pvals/nperm
+  new_qvals = p.adjust(new_pvals,method='fdr')
+  res = l[[1]]
+  res[,"pval"] = new_pvals
+  res[,"padj"] = new_qvals
+  return(res)
+}
+
 # Example code for determining the number of clusters in a matrix
 # We run kmeans on our data matrix new_m_effects, changing the number of clusters from 1 to 10
 # wss <- sapply(1:10,

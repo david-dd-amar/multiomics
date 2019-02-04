@@ -1,6 +1,5 @@
 setwd("/Users/David/Desktop/multiomics/oren_tz/fatigue/")
 source("~/Desktop/repos/multiomics/R/aux_functions.R")
-list.files()
 
 # Prepare the workspace, preprocess and reshape the data.
 
@@ -57,6 +56,11 @@ par(mfrow=c(2,2))
 for(nn in names(datasets)){
 	boxplot(datasets[[nn]][[1]],main=nn,ylab="Log abundance",xlab="Samples",names=F)
 }
+# RNA-Seq boxplots only
+par(mfrow=c(1,2))
+for(nn in names(datasets)[3:4]){
+  boxplot(datasets[[nn]][[1]],main=nn,ylab="Log abundance",xlab="Samples",names=F)
+}
 
 # Keep a version of the data matrices with gene names instead of transcripts
 datasets_genes = list()
@@ -73,7 +77,7 @@ sapply(datasets_genes,dim)
 
 # Load the RNASeq biospecimen metadata
 
-# For analusos of colon
+# For analysis of colon
 rnaseq_colon_bios = read.table("rnaseq_colon_biospec_metadata.txt",sep="\t",header=T)
 # match to the column names in our dataset, look at colnames(datasets[[3]][[1]])
 rnaseq_colon_bios = rnaseq_colon_bios[!grepl("anti", rnaseq_colon_bios[,2]),]
@@ -90,14 +94,26 @@ rnaseq_cp_bios = rnaseq_cp_bios[c(1:3,5:10),] # based on manual examination
 xx = datasets[["rnaseq;CP"]][[1]] # manual check: the colnames of xx fit the metadata above
 colnames(xx)
 
-# PCA of a selected matrix
+# PCA of the CP matrix
 xx = t(datasets_genes$`rnaseq;CP`)
 yy1 = as.factor(rnaseq_cp_bios$Batch)
 yy2 = as.factor(grepl("DSS",rnaseq_cp_bios$Sample.ID))
 xx_pca = prcomp(xx,retx=T)$x[,1:2]
+dev.off()
 plot(xx_pca[,1],xx_pca[,2],pch=as.numeric(yy1),col=yy2,lwd=4,
      ylab="PC2",xlab="PC1",cex.lab=1.2)
 legend("bottomleft",as.character(unique(yy1)),pch=unique(as.numeric(yy1)),cex=1.3)
+legend("topright",as.character(unique(yy2)),fill=unique(yy2),cex=1.3)
+
+# PCA of the colon matrix
+xx = t(datasets_genes$`rnaseq;colon`)
+yy1 = as.factor(rnaseq_colon_bios$Batch)
+yy2 = as.factor(grepl("DSS",rnaseq_colon_bios$Name))
+xx_pca = prcomp(xx,retx=T)$x[,1:2]
+dev.off()
+plot(xx_pca[,1],xx_pca[,2],pch=as.numeric(yy1),col=yy2,lwd=4,
+     ylab="PC2",xlab="PC1",cex.lab=1.2)
+legend("bottom",as.character(unique(yy1)),pch=unique(as.numeric(yy1)),cex=1.3)
 legend("topright",as.character(unique(yy2)),fill=unique(yy2),cex=1.3)
 
 library(lme4)
@@ -221,15 +237,27 @@ for(nn in names(datasets)[3:4]){
 l = diff_res[3:6]
 par(mfrow=c(2,2))
 for(nn in names(l)){
-	hist(l[[nn]][,2],main=nn,xlab="P-value",xlim=c(0,1))
+  curr_title = "P-value histogram: t-test"
+  if(grepl("corrected",nn)){
+    curr_title = "P-value histogram: adjusted lm"
+  }
+  if(grepl("colon",nn)){
+    curr_title = paste(curr_title,"colon",sep=",")
+  }
+  else{
+    curr_title = paste(curr_title,"CP",sep=",")
+  }
+	hist(l[[nn]][,2],main=curr_title,xlab="P-value",xlim=c(0,1))
 }
-par(mfrow=c(2,2))
-for(nn in names(l)){
-	qqplot(y=-log(l[[nn]][,2],10),x=-log(runif(10000),10),main=nn,ylab="Sample quantiles",xlab="Theoretical quantiles")
-	abline(0,1,lty=2,lwd=2,col="red")
-}
+# # In case we want qq plots
+# par(mfrow=c(2,2))
+# for(nn in names(l)){
+# 	qqplot(y=-log(l[[nn]][,2],10),x=-log(runif(10000),10),
+# 	       main=nn,ylab="Sample quantiles",xlab="Theoretical quantiles")
+# 	abline(0,1,lty=2,lwd=2,col="red")
+# }
 
-# Specific plots for the CP data
+# Specific plots for the CP data alone
 par(mfrow=c(1,2))
 pvals1 = diff_res[[5]][,2]
 pvals2 = diff_res[[6]][,2]
@@ -246,14 +274,25 @@ hist(pvals2,main="P-value histogram: adjusted lm",xlab="P-value",xlim=c(0,1))
 
 # Compare t-test to adjusted results
 l = diff_res[3:6]
+
+# Correlations: CP dataset
 y1 = -log(l[[3]][,2])
 y2 = -log(l[[4]][,2])
 plot(y1,y2);abline(0,1,lty=2,lwd=2)
 cor(y1,y2,method = "spearman")
 cor(y1,y2)
-
 y1 = l[[3]][,1]
 y2 = l[[4]][,1]
+plot(y1,y2);abline(0,1,lty=2,lwd=2)
+cor(y1,y2,method = "spearman")
+cor(y1,y2)
+# Correlations: colon dataset
+y1 = -log(l[[1]][,2])
+y2 = -log(l[[2]][,2])
+plot(y1,y2);abline(0,1,lty=2,lwd=2)
+cor(y1,y2,method = "spearman")
+y1 = l[[1]][,1]
+y2 = l[[2]][,1]
 plot(y1,y2);abline(0,1,lty=2,lwd=2)
 cor(y1,y2,method = "spearman")
 cor(y1,y2)
@@ -321,6 +360,11 @@ for(cc in names(diff_res)[3:6]){
 # Distribution and statistics of the GSEA results
 gsea_res = fgsea_enrichment_results$`rnaseq;CP_naive;fchange_ranking`
 plot(gsea_res$NES,gsea_res$pval,pch=20,xlab = "Normalized GSEA score",
+     ylab = "Empirical p-value",cex.axis=1.2,cex.lab=1.3,main="CP",
+     xlim = c(-4,4))
+# Same for colon
+gsea_res = fgsea_enrichment_results$`rnaseq;colon_naive;fchange_ranking`
+plot(gsea_res$NES,gsea_res$pval,pch=20,xlab = "Normalized GSEA score",
      ylab = "Empirical p-value",cex.axis=1.2,cex.lab=1.3)
 
 # Interpret the GSEA results
@@ -334,7 +378,7 @@ adjust_fgsea_res<-function(x,thr=0.01){
 fgsea_matrix_enrichment_results = lapply(fgsea_matrix_enrichment_results,adjust_fgsea_res)
 sapply(fgsea_matrix_enrichment_results,dim)
 # Save the analysis
-save(diff_res,
+save(diff_res,fgsea_ranks,
      selected_results_adjusted,selected_results_naive,
      enrichment_results,fgsea_enrichment_results,fgsea_matrix_enrichment_results,
      file="diff_abundance_analysis_results.RData")
@@ -346,21 +390,29 @@ length(intersect(x1,x2))
 length(x1);length(x2)
 x1[grepl("GLUTA",x1)]
 
+# Compare colon results befor and after the analysis
+x1 = unlist(fgsea_matrix_enrichment_results[["rnaseq;colon_batch_conc_corrected;fchange_ranking"]][,1])
+x2 = unlist(fgsea_matrix_enrichment_results[["rnaseq;colon_naive;fchange_ranking"]][,1])
+length(intersect(x1,x2))
+length(x1);length(x2)
+x1[grepl("GLUTA",x1)]
+
 # Plotting of selected GSEA results
 library(data.table);library(fgsea);library(ggplot2);library(gplots)
 specific_pathway = "PANTHER_MM_THYROTROPIN-RELEASING_HORMONE_RECEPTOR_SIGNALING_PATHWAY" 
 specific_pathway = "WIKIPATHWAYS_MM_MAPK_SIGNALING_PATHWAY-WP382"  
 specific_pathway = "PANTHER_MM_DOPAMINE_RECEPTOR_MEDIATED_SIGNALING_PATHWAY" 
 specific_pathway = "BIOCARTA_MM_REGULATION_OF_CK1_CDK5_BY_TYPE_1_GLUTAMATE_RECEPTORS" 
-specific_pathway = "PANTHER_MM_IONOTROPIC_GLUTAMATE_RECEPTOR_PATHWAY"  
+specific_pathway = "PANTHER_MM_IONOTROPIC_GLUTAMATE_RECEPTOR_PATHWAY" 
 
+# Further display items: CP
 ranks_name = names(diff_res)[5]
+specific_pathway = "PANTHER_MM_IONOTROPIC_GLUTAMATE_RECEPTOR_PATHWAY" 
 curr_ranks_name = names(fgsea_ranks)[grepl(ranks_name,names(fgsea_ranks)) &
                                   grepl("fchange",names(fgsea_ranks))]
 curr_ranks = fgsea_ranks[[curr_ranks_name]]
 plotEnrichment(mm_pathway[[specific_pathway]],
                curr_ranks) + labs(title=specific_pathway)
-
 all_gsea_res = as.matrix(fgsea_enrichment_results[[curr_ranks_name]])
 rownames(all_gsea_res) = all_gsea_res[,1]
 curr_genes = all_gsea_res[specific_pathway,8][[1]]
@@ -371,10 +423,30 @@ curr_meta = rnaseq_cp_bios
 colnames(m) = rep("control",ncol(m))
 colnames(m)[m_y] = "case"
 heatmap.2(m,trace = "none",scale = "row",col="bluered")
-
 # Print the selected GSEA results table in a nice table format
 write.table(fgsea_matrix_enrichment_results[["rnaseq;CP_batch_conc_corrected;fchange_ranking"]],
             sep="\t", file = "CP_GSEA_results.txt",row.names = F,col.names = T)
 
+# Further display items: colon
+ranks_name = names(diff_res)[3]
+specific_pathway = "INOH_MM_GLUTAMATE_GLUTAMINE_METABOLISM"
+curr_ranks_name = names(fgsea_ranks)[grepl(ranks_name,names(fgsea_ranks)) &
+                                       grepl("fchange",names(fgsea_ranks))]
+curr_ranks = fgsea_ranks[[curr_ranks_name]]
+plotEnrichment(mm_pathway[[specific_pathway]],
+               curr_ranks) + labs(title=specific_pathway)
+all_gsea_res = as.matrix(fgsea_enrichment_results[[curr_ranks_name]])
+rownames(all_gsea_res) = all_gsea_res[,1]
+curr_genes = all_gsea_res[specific_pathway,8][[1]]
+curr_ranks[curr_genes]
+m = datasets_genes[[3]][curr_genes,]
+m_y = datasets[[3]][[2]]
+curr_meta = rnaseq_cp_bios
+colnames(m) = rep("control",ncol(m))
+colnames(m)[m_y] = "case"
+heatmap.2(m,trace = "none",scale = "row",col="bluered",mar=c(8,8))
+# Print the selected GSEA results table in a nice table format
+write.table(fgsea_matrix_enrichment_results[["rnaseq;colon_naive;fchange_ranking"]],
+            sep="\t", file = "colon_GSEA_results.txt",row.names = F,col.names = T,quote=F)
 
 
